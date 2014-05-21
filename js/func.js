@@ -16,6 +16,24 @@ function set_o(key,value){
 	return set_s(key,JSON.stringify(value));
 }
 
+function get_filename(uri){
+	if( uri ){
+		var q_pos = uri.lastIndexOf('?');
+		if( q_pos>=0 ){
+			uri = uri.substr(0,q_pos);
+		}
+		var s_pos = uri.lastIndexOf('/');
+		if( s_pos>=0 ){
+			uri = uri.substr(s_pos+1);
+		}
+	}else{
+		uri='';
+		console.log('uri is empty');
+	}
+	return uri;
+}
+
+
 function make_img_url(id,i,_suffix){
 	suffix = _suffix || '.jpg';
 	return IMG_ROOT + id + '/' + id+'_'+i+suffix;
@@ -29,7 +47,7 @@ function make_img_url(id,i,_suffix){
 	
 	var photoSave = function(imageURI, callback) {
 		// this relies on knowledge of photo file URI - you might want to make this more robust: -)
-		var imgFileName = imageURI.substr(imageURI.lastIndexOf('/') + 1);
+		var imgFileName = get_filename(imageURI);
 		var suffix = imgFileName.substr(imgFileName.lastIndexOf('.'));
 		var new_name = random_string(32) + suffix;
 		
@@ -92,11 +110,16 @@ function make_img_url(id,i,_suffix){
 	
 	var download_save = function(imageURI, callback) {
 		// this relies on knowledge of photo file URI - you might want to make this more robust: -)
-		var imgFileName = imageURI.substr(imageURI.lastIndexOf('/') + 1);
+		var imgFileName = get_filename(imageURI);
 		var suffix = imgFileName.substr(imgFileName.lastIndexOf('.'));
 		//var new_name = random_string(32) + suffix;
 		var new_name = imgFileName;
 		
+		
+		if( typeof LocalFileSystem == 'undefined' ){
+			callback(null);
+			return;
+		}
 		//console.log('imgFileName: ' + imgFileName);
 		//console.log('suffix: ' + suffix);
 		//console.log('new_name: ' + new_name);
@@ -114,7 +137,7 @@ function make_img_url(id,i,_suffix){
 						callback(theFile.toURL());
 					},
 					function(){
-						callback('');
+						callback(null);
 					}
 			);
 		});
@@ -260,9 +283,20 @@ function init_db_data($page){
 
 
 window.upload_img = function(_img_uri,id,index,_cb,_cbe){
+	
+	console.log('=========== upload_img function call START ============');
+	console.log(_img_uri);
+	console.log(id);
+	console.log(index);
+	console.log('=========== upload_img function call END ============');
+	
 	var ft = new FileTransfer();
 	
-	var imgFileName = _img_uri.substr(_img_uri.lastIndexOf('/') + 1);
+	if( _img_uri.lastIndexOf('?')>=0 ) {
+		_img_uri = _img_uri.substr( 0,_img_uri.lastIndexOf('?') )
+	}
+	
+	var imgFileName = get_filename(_img_uri);
 	var suffix = imgFileName.substr(imgFileName.lastIndexOf('.'));
 	var upload_file_name = id+'_'+index+suffix;
 	
@@ -272,20 +306,24 @@ window.upload_img = function(_img_uri,id,index,_cb,_cbe){
 	ft_options.fileName = upload_file_name;
 	ft_options.mimeType = "text/plain";
 	
-	//toast('start_upload ' + ' id ' + id + _img_uri);
+	console.log('start_upload ' + id + ' ' + _img_uri + ' ' + upload_file_name);
+	
 	ft.upload(_img_uri, encodeURI(AJAX_ROOT+"?func=file.upload&id="+id+"&type=image"), function(r){
 		//toast('result:'+r.response);
 		try{
 			var json = jQuery.parseJSON(r.response);
 			//toast('json ' + JSON.stringify(json));
-			_cb(json.url);
+			
+			_cb(json.data.url);
 		}catch(e){
+			console.log('上传失败，请重试。code=1');
 			toast('上传失败，请重试。code=1');
 			//toast(e);
 			_cbe(e);
 		}
 	}, function(error){
 		//toast('er='+error);
+		console.log('上传失败，请重试。code=2')
 		toast('上传失败，请重试。code=2');
 		_cbe(e);
 		//toast("Code = " + error.code);
@@ -495,3 +533,152 @@ window.clear_data = function(){
 	}
 }
 
+
+
+window.update_imgs = function(){
+	
+	jQuery('.js_sync_img').each(function(index, element) {
+    var $img = jQuery(this);
+		
+		var inited = $img.data('sync_img_inited');
+		if( inited ) return;
+		
+		var data_key = $img.data('data_key');
+		var hash_id = $img.data('hash_id');
+		var img_pos = $img.data('img_pos');
+		
+		var list = get_o(data_key);
+		var obj = list[hash_id];
+		
+		var local_uri = obj['local_uri_'+img_pos];
+		var remote_id = obj.remote_id;
+		
+		console.log(obj);
+		
+		console.log(' Before DOWNLOAD');
+		
+		if( typeof obj['is_download_'+img_pos] == 'undefined' || obj['is_download_'+img_pos] == false ){
+			
+			console.log('DOWNLOAD');
+			
+			var filename = get_filename(local_uri);
+			var suffix = filename.substr(filename.lastIndexOf('.'));
+			var remote_filename = remote_id+'_' + img_pos + suffix;
+			var remote_url = IMG_ROOT + remote_id + '/' + remote_filename;
+			console.log('START DOWNLOAD : ' + remote_url);
+			
+			$img.attr('src',remote_url+'?_='+random_string());
+			
+			console.log( 'remote_url '+remote_url );
+			
+			try{
+				download_img_to_local(remote_url,function(local_uri){
+					console.log('download success local uri :' + local_uri);
+					if( local_uri ){
+						$img.attr('src',local_uri+'?_='+random_string());
+						var list_da = get_o(data_key);
+						if( list_da[hash_id] ){
+							list_da[hash_id]['local_uri_'+img_pos] = local_uri;
+							list_da[hash_id]['is_download_'+img_pos] = true;
+							set_o(data_key,list_da);
+							//$img.attr('src',local_uri+'?_='+random_string());
+						}
+					}
+				});
+			}catch(e){}
+			
+		}else{
+			
+			console.log('DOWNLOADed use local uri');
+			
+			$img.attr('src',local_uri+'?_='+random_string());
+		}
+		
+		$img.data('sync_img_inited',true);
+			
+	})
+		
+}
+
+
+
+
+window.update_imgs_dp = function(){
+	
+	jQuery('.js_sync_img').each(function(index, element) {
+    var $img = jQuery(this);
+		
+		var inited = $img.data('sync_img_inited');
+		if( inited ) return;
+		
+		var data_key = $img.data('data_key');
+		var hash_id = $img.data('hash_id');
+		var img_pos = $img.data('img_pos');
+		
+		var list = get_o(data_key);
+		var obj = list[hash_id];
+		
+		var single_list = obj.single_list;
+		var remote_id = obj.remote_id;
+		
+		var cat_map_key = {};
+		
+		var min_cat = 99999;
+		for( var k in single_list ){
+			cat_map_key[single_list[k].cat]=k;
+			if( single_list[k].cat < min_cat ){
+				min_cat = single_list[k].cat;
+			}
+		}
+		
+		if( img_pos=='first' ){
+			var pos_key = cat_map_key[min_cat];
+		}else{
+			var pos_key = cat_map_key[img_pos];
+		}
+		
+		var img_obj = single_list[pos_key];
+		
+		var local_uri = img_obj['local_uri'];
+		
+		console.log(obj);
+		console.log(local_uri);
+		
+		if( typeof img_obj['is_download'] == 'undefined' || img_obj['is_download'] == false ){
+	
+			console.log('DOWNLOAD');
+			
+			var filename = get_filename(local_uri);
+			var suffix = filename.substr(filename.lastIndexOf('.'));
+			var remote_filename = remote_id+'_' + img_obj.cat + suffix;
+			var remote_url = IMG_ROOT + remote_id + '/' + remote_filename;
+			
+			console.log('START DOWNLOAD : ' + remote_url);
+			
+			$img.attr('src',remote_url+'?_='+random_string());
+			
+			try{
+				download_img_to_local(remote_url,function(local_uri){
+					console.log('download success local uri :' + local_uri);
+					if( local_uri ){
+						$img.attr('src',local_uri+'?_='+random_string());
+						var list_da = get_o(data_key);
+						if( list_da[hash_id] ){
+							list_da[hash_id]['single_list'][pos_key]['local_uri'] = local_uri;
+							list_da[hash_id]['single_list'][pos_key]['is_download'] = true;
+							set_o(data_key,list_da);
+							//$img.attr('src',local_uri+'?_='+random_string());
+						}
+					}
+				});
+			}catch(e){}
+			
+		}else{
+			$img.attr('src',local_uri+'?_='+random_string());
+		}
+		
+		$img.data('sync_img_inited',true);
+			
+	})
+		
+}

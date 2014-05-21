@@ -291,12 +291,17 @@ ALF_sync.prototype.sync_single = function( obj ){
 	var api_key = 'single';
 	var data_key = 'my.'+page_key;
 	var obj_list = get_o(data_key);
-	var cur_obj = obj_list[obj.id];
 	
-	console.log('OBJ LIST')
-	console.log(obj_list);
+	if( obj_list[obj.id] ){
+		obj_list[obj.id]['is_download_1']=false;
+		obj_list[obj.id]['is_download_2']=false;
+		obj_list[obj.id]['is_download_3']=false;
+		set_o(data_key,obj_list);
+		var cur_obj = obj_list[obj.id];
+	}
 	
 	if( cur_obj || obj.remote_id ){
+		
 		
 		switch( obj.action ){
 			case 'add':
@@ -333,7 +338,6 @@ ALF_sync.prototype.sync_single = function( obj ){
 					if( cur_obj.local_uri_2 ){
 						try{
 							upload_img(cur_obj.local_uri_2,remote_id,2,function(remote_uri){
-								//toast('remote_uri:' + remote_uri);
 								
 								obj_list[obj.id]['remote_uri_2']=remote_uri;
 								set_o(data_key,obj_list);
@@ -376,7 +380,7 @@ ALF_sync.prototype.sync_single = function( obj ){
 				})
 				break;
 			case 'edit':
-				console.log("CASE EDIT");
+				console.log("CASE EDIT SINGLE");
 				console.log(cur_obj);
 				if( cur_obj.remote_id ){
 					send_ajax(api_key+'.edit',{
@@ -387,12 +391,13 @@ ALF_sync.prototype.sync_single = function( obj ){
 						}
 					},function(data){
 						
+						var remote_id = cur_obj.remote_id;
+						
 						//upload img 1
 						if( cur_obj.local_uri_1 ){
 							try{
-								upload_img(cur_obj.local_uri_1,remote_id,1,function(remote_uri){
+								upload_img(cur_obj.local_uri_1,cur_obj.remote_id,1,function(remote_uri){
 									//toast('remote_uri:' + remote_uri);
-									
 									obj_list[obj.id]['remote_uri_1']=remote_uri;
 									set_o(data_key,obj_list);
 									
@@ -413,6 +418,8 @@ ALF_sync.prototype.sync_single = function( obj ){
 							try{
 								upload_img(cur_obj.local_uri_2,remote_id,2,function(remote_uri){
 									//toast('remote_uri:' + remote_uri);
+									
+									toast('Upload 2 success ! remote_uri:' + remote_uri);
 									
 									obj_list[obj.id]['remote_uri_2']=remote_uri;
 									set_o(data_key,obj_list);
@@ -461,6 +468,7 @@ ALF_sync.prototype.sync_single = function( obj ){
 				break;
 			case 'del':
 				send_ajax(api_key+'.delete',{'id':obj.remote_id},function(data){
+					
 					list.shift();
 					set_o(_this.key,list);
 					_this.start();
@@ -497,6 +505,35 @@ ALF_sync.prototype.sync_dapei = function( obj ){
 					var remote_id = data.data;
 					obj_list[obj.id]['remote_id']=remote_id;
 					set_o(data_key,obj_list);
+					
+					var single_list = obj_list[obj.id]['single_list'];
+					
+					for( var k in single_list ){
+						var single_img_obj = single_list[k];
+						
+						console.log(single_img_obj);
+						
+						try{
+							upload_img(single_img_obj.local_uri,obj_list[obj.id].remote_id,single_img_obj.cat,function(remote_uri){
+								console.log('remote_uri:' + remote_uri);
+								
+								obj_list[obj.id]['remote_uri_3']=remote_uri;
+								set_o(data_key,obj_list);
+								
+								list.shift();
+								set_o(_this.key,list);
+								_this.start();
+								
+							},function(){
+								_this.hide_loading();
+							})
+						}catch(e){
+							_this.hide_loading();
+						}
+					}
+
+
+
 					list.shift();
 					set_o(_this.key,list);
 					_this.start();
@@ -505,10 +542,6 @@ ALF_sync.prototype.sync_dapei = function( obj ){
 				})
 				break;
 			case 'edit':
-				
-				console.log('CUR OBJ');
-				console.log(cur_obj);
-				
 				if( cur_obj.remote_id ){
 					send_ajax(api_key+'.edit',{
 						'id':cur_obj.remote_id,
@@ -517,6 +550,34 @@ ALF_sync.prototype.sync_dapei = function( obj ){
 							'description':JSON.stringify(cur_obj)
 						}
 					},function(data){
+						
+						var single_list = obj_list[obj.id]['single_list'];
+						
+						for( var k in single_list ){
+							var single_img_obj = single_list[k];
+							
+							console.log(single_img_obj);
+							
+							try{
+								upload_img(single_img_obj.local_uri,obj_list[obj.id].remote_id,single_img_obj.cat,function(remote_uri){
+									console.log('remote_uri:' + remote_uri);
+									
+									obj_list[obj.id]['remote_uri_3']=remote_uri;
+									set_o(data_key,obj_list);
+									
+									list.shift();
+									set_o(_this.key,list);
+									_this.start();
+									
+								},function(){
+									_this.hide_loading();
+								})
+							}catch(e){
+								_this.hide_loading();
+							}
+						}
+						
+				
 						list.shift();
 						set_o(_this.key,list);
 						_this.start();
